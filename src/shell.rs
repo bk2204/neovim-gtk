@@ -226,13 +226,15 @@ pub struct State {
     pub options: RefCell<ShellOptions>,
     transparency_settings: TransparencySettings,
 
-    detach_cb: Option<Box<RefCell<dyn FnMut() + Send + 'static>>>,
+    detach_cb: Option<Box<RefCell<dyn FnMut(i32) + Send + 'static>>>,
     nvim_started_cb: Option<Box<RefCell<dyn FnMut() + Send + 'static>>>,
     command_cb: Option<Box<dyn FnMut(&mut State, nvim::NvimCommand) + Send + 'static>>,
 
     subscriptions: RefCell<Subscriptions>,
 
     action_widgets: Arc<UiMutex<Option<ActionWidgets>>>,
+
+    exit_status: Arc<Mutex<Option<i32>>>,
 }
 
 impl State {
@@ -294,6 +296,8 @@ impl State {
             subscriptions: RefCell::new(Subscriptions::new()),
 
             action_widgets: Arc::new(UiMutex::new(None)),
+
+            exit_status: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -332,7 +336,7 @@ impl State {
 
     pub fn set_detach_cb<F>(&mut self, cb: Option<F>)
     where
-        F: FnMut() + Send + 'static,
+        F: FnMut(i32) + Send + 'static,
     {
         if let Some(c) = cb {
             self.detach_cb = Some(Box::new(RefCell::new(c)));
@@ -433,6 +437,11 @@ impl State {
         if let Some(cursor) = &mut self.cursor {
             cursor.set_cursor_blink(val);
         }
+    }
+
+    pub fn set_exit_status(&self, val: i32) {
+        let mut status = self.exit_status.lock().unwrap();
+        *status = Some(val);
     }
 
     pub fn open_file(&self, path: &str) {
@@ -1188,7 +1197,7 @@ impl Shell {
 
     pub fn set_detach_cb<F>(&self, cb: Option<F>)
     where
-        F: FnMut() + Send + 'static,
+        F: FnMut(i32) + Send + 'static,
     {
         let mut state = self.state.borrow_mut();
         state.set_detach_cb(cb);
@@ -1215,6 +1224,11 @@ impl Shell {
             .borrow()
             .popup_menu
             .set_preview(options.contains("preview"));
+    }
+
+    pub fn set_exit_status(&self, status: i32) {
+        let state = self.state.borrow();
+        state.set_exit_status(status);
     }
 }
 
@@ -1490,11 +1504,12 @@ fn init_nvim_async(
                 error!("{}", e);
             }
         }
-
         glib::idle_add_once(move || {
             cb_state_arc.borrow().nvim.clear();
             if let Some(ref cb) = cb_state_arc.borrow().detach_cb {
-                (&mut *cb.borrow_mut())();
+                let sr = cb_state_arc.borrow();
+                let lock = sr.exit_status.lock().unwrap();
+                (&mut *cb.borrow_mut())(lock.unwrap_or(0));
             }
         });
     }));

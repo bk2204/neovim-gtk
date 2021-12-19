@@ -259,14 +259,21 @@ impl Ui {
             clone!(shell_ref => move |args| set_background(&*shell_ref, args)),
         );
 
+        shell.state.borrow().subscribe(
+            SubscriptionKey::from("VimLeave"),
+            &["v:exiting"],
+            clone!(shell_ref => move |args| set_exit_status(&*shell_ref, args)),
+        );
+
         window.connect_delete_event(clone!(comps_ref, shell_ref => move |_, _| {
             gtk_delete(&*comps_ref, &*shell_ref)
         }));
 
         shell.grab_focus();
 
-        shell.set_detach_cb(Some(clone!(comps_ref => move || {
+        shell.set_detach_cb(Some(clone!(comps_ref => move |status| {
             glib::idle_add_once(clone!(comps_ref => move || comps_ref.borrow().close_window()));
+            std::process::exit(status);
         })));
 
         let state_ref = self.shell.borrow().state.clone();
@@ -558,7 +565,9 @@ fn on_help_about(window: &gtk::ApplicationWindow) {
     let about = AboutDialog::new();
     about.set_transient_for(Some(window));
     about.set_program_name("NeovimGtk");
-    about.set_version(Some(crate::GIT_BUILD_VERSION.unwrap_or(env!("CARGO_PKG_VERSION"))));
+    about.set_version(Some(
+        crate::GIT_BUILD_VERSION.unwrap_or(env!("CARGO_PKG_VERSION")),
+    ));
     about.set_logo_icon_name(Some("org.daa.NeovimGtk"));
     about.set_authors(&[env!("CARGO_PKG_AUTHORS")]);
     about.set_comments(Some(misc::about_comments().as_str()));
@@ -644,6 +653,11 @@ fn update_window_title(comps: &Arc<UiMutex<Components>>, args: Vec<String>) {
     };
 
     window.set_title(filename);
+}
+
+fn set_exit_status(shell: &RefCell<Shell>, args: Vec<String>) {
+    let status = args[0].parse().unwrap();
+    shell.borrow().set_exit_status(status);
 }
 
 #[derive(Serialize, Deserialize)]
