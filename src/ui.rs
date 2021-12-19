@@ -259,6 +259,12 @@ impl Ui {
             clone!(shell_ref => move |args| set_background(&*shell_ref, args)),
         );
 
+        let update_size = shell.state.borrow().subscribe(
+            SubscriptionKey::from("VimResized"),
+            &["&lines", "&columns"],
+            clone!(comps_ref, shell_ref => move |args| update_window_size(&*comps_ref, &*shell_ref, args)),
+        );
+
         shell.state.borrow().subscribe(
             SubscriptionKey::from("VimLeave"),
             &["v:exiting"],
@@ -299,6 +305,7 @@ impl Ui {
                 &update_subtitle,
                 &update_completeopt,
                 &update_background,
+                &update_size,
                 post_config_cmds.as_ref(),
                 mode,
             );
@@ -323,6 +330,7 @@ impl Ui {
         update_subtitle: &Option<SubscriptionHandle>,
         update_completeopt: &SubscriptionHandle,
         update_background: &SubscriptionHandle,
+        update_size: &SubscriptionHandle,
         post_config_cmds: &[String],
         mode: StartMode,
     ) {
@@ -334,6 +342,7 @@ impl Ui {
         shell.run_now(&update_title);
         shell.run_now(&update_completeopt);
         shell.run_now(&update_background);
+        shell.run_now(&update_size);
         if let Some(ref update_subtitle) = update_subtitle {
             shell.run_now(&update_subtitle);
         }
@@ -658,6 +667,26 @@ fn update_window_title(comps: &Arc<UiMutex<Components>>, args: Vec<String>) {
 fn set_exit_status(shell: &RefCell<Shell>, args: Vec<String>) {
     let status = args[0].parse().unwrap();
     shell.borrow().set_exit_status(status);
+}
+
+fn update_window_size(comps: &UiMutex<Components>, shell: &RefCell<Shell>, args: Vec<String>) {
+    let lines = &args[0];
+    let cols = &args[1];
+
+    if let (Ok(lines), Ok(cols)) = (lines.parse::<usize>(), cols.parse::<usize>()) {
+        let state_ref = shell.borrow().state.clone();
+        let state = state_ref.borrow();
+
+        if state.should_resize(cols, lines) {
+            let (width, height) = state.calc_window_size(cols, lines);
+
+            let comps_ref = comps.clone();
+            let comps = comps_ref.borrow();
+            let window = comps.window.as_ref().unwrap();
+
+            window.resize(width as i32, height as i32);
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
