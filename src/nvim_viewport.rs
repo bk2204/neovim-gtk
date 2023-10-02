@@ -70,7 +70,7 @@ impl ObjectSubclass for NvimViewportObject {
 
     fn class_init(klass: &mut Self::Class) {
         klass.set_css_name("widget");
-        klass.set_accessible_role(gtk::AccessibleRole::Widget);
+        klass.set_accessible_role(gtk::AccessibleRole::TextBox);
     }
 }
 
