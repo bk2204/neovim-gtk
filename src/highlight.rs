@@ -325,6 +325,8 @@ impl Highlight {
                 "blend" => (),
                 // TODO: These two are not documented anywhere but used by the fzf plugin
                 "fg_indexed" | "bg_indexed" => (),
+                // TODO: This is used in Neovim 0.10 to indicate the target of a link.
+                "url" => (),
                 attr_key => error!("unknown attribute {attr_key}={val:?}"),
             };
         }
